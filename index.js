@@ -1,5 +1,3 @@
-// index.js - VERSI PASTI RESPON (minimal + debug full)
-
 require('dotenv').config();
 const express = require('express');
 const { Telegraf } = require('telegraf');
@@ -7,68 +5,72 @@ const { Telegraf } = require('telegraf');
 const TOKEN = process.env.BOT_TOKEN;
 
 if (!TOKEN) {
-  console.error('ERROR: BOT_TOKEN TIDAK ADA!');
+  console.error('ERROR: BOT_TOKEN tidak ada di env!');
   process.exit(1);
 }
 
-console.log('Token OK. Setup bot...');
+console.log('Token ditemukan. Mulai setup...');
 
 const bot = new Telegraf(TOKEN);
 
-// Debug: Log setiap update yang masuk ke Telegraf
-bot.use(async (ctx, next) => {
-  console.log('>>> UPDATE MASUK KE TELEGRAF MIDDLEWARE <<<');
+// Middleware global Telegraf: log setiap update yang masuk
+bot.use((ctx, next) => {
+  console.log('>>> UPDATE DITERIMA OLEH TELEGRAF <<<');
   console.log('Update type:', ctx.updateType);
-  console.log('Message text:', ctx.message?.text || 'Tidak ada');
-  console.log('From user:', ctx.from?.id || 'Tidak ada');
-  await next();
-  console.log('>>> NEXT DIPANGGIL <<<');
+  if (ctx.message) {
+    console.log('Message text:', ctx.message.text);
+    console.log('From user ID:', ctx.from.id);
+  }
+  return next().then(() => {
+    console.log('>>> NEXT SELESAI <<<');
+  }).catch(err => {
+    console.error('Error di middleware:', err);
+  });
 });
 
-// Handler /start - sederhana sekali
+// Handler /start sederhana
 bot.start(async (ctx) => {
-  console.log('>>> HANDLER bot.start() DIPANGGIL! <<<');
-
+  console.log('>>> bot.start() TER-TRIGGER! <<<');
   try {
-    await ctx.reply('Halo! Bot sudah terima /start kamu. Ini respon tes dari server.');
-    console.log('>>> REPLY SUKSES DIKIRIM <<<');
+    await ctx.reply('Halo! Bot sudah terima /start. Ini tes respon teks sederhana.');
+    console.log('>>> REPLY /start SUKSES <<<');
   } catch (err) {
-    console.error('Gagal reply:', err.message || err);
+    console.error('Gagal reply /start:', err.message);
   }
 });
 
-// Handler semua text (backup kalau command tidak match)
+// Handler semua pesan text (backup kalau command tidak match)
 bot.on('text', async (ctx) => {
-  console.log('>>> TEXT HANDLER DIPANGGIL (backup) <<<');
-  await ctx.reply('Kamu kirim teks: ' + ctx.message.text);
+  console.log('>>> TEXT HANDLER (backup) <<<');
+  await ctx.reply('Kamu kirim: ' + ctx.message.text);
 });
 
-// Handler tes /ping
+// Handler /ping tes
 bot.command('ping', async (ctx) => {
-  console.log('>>> /ping DIPANGGIL <<<');
+  console.log('>>> /ping TER-TRIGGER <<<');
   await ctx.reply('Pong!');
 });
 
-// Setup Express
+// Express setup
 const app = express();
 
-// WAJIB parse JSON
+// Parse JSON WAJIB
 app.use(express.json());
 
-// Log request masuk
+// Log request
 app.use((req, res, next) => {
-  console.log(`\n=== REQUEST [${new Date().toISOString()}] ${req.method} ${req.url} ===`);
+  console.log(`\n=== REQUEST MASUK [${new Date().toISOString()}] ${req.method} ${req.url} ===`);
   next();
 });
 
-// Path webhook sederhana (ubah kalau mau lebih aman)
+// Path webhook sederhana (ubah kalau konflik)
 const webhookPath = '/webhook';
 
-// Pasang Telegraf di path itu
+// Pasang webhook Telegraf
 app.use(webhookPath, bot.webhookCallback(webhookPath));
 
 app.get('/', (req, res) => {
-  res.send('Bot OK! Kirim /start di Telegram.');
+  res.send('Bot hidup! Coba /start di Telegram.');
 });
 
 const PORT = process.env.PORT || 3000;
@@ -81,9 +83,9 @@ app.listen(PORT, '0.0.0.0', async () => {
 
   try {
     await bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true });
-    console.log(`Webhook SET: ${webhookUrl}`);
+    console.log(`Webhook set sukses: ${webhookUrl}`);
   } catch (err) {
-    console.error('Gagal set webhook:', err.message || err);
+    console.error('Gagal set webhook:', err.message);
   }
 });
 
