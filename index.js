@@ -9,79 +9,125 @@ const PORT = process.env.PORT || 3000
 const PUBLIC_URL = process.env.PUBLIC_URL
 const STORE_URL = process.env.STORE_URL || 'https://t.me/yourchannel'
 
-function escapeHtml(s = '') {
-  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+function esc(s = '') {
+  return s
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
 }
 
-function buildIdCard(ctx) {
-  const u = ctx.from
-  const nama = escapeHtml([u.first_name, u.last_name].filter(Boolean).join(' ') || '-')
-  const username = u.username ? '@' + escapeHtml(u.username) : 'Tidak ada'
-  const userId = u.id
-  const premium = u.is_premium ? 'Ya' : 'Tidak'
-  const dcId = String(userId).slice(0, 1) || '-'
-  const mention = `<a href="tg://user?id=${userId}">${nama}</a>`
+function calcDcId(userId) {
+  // DC ID asli tidak tersedia di Bot API -> ini dummy biar mirip bot cekid
+  // kamu boleh ganti logikanya sendiri
+  return String(userId).slice(0, 1) || '-'
+}
 
-  return `<b>🪪 TELEGRAM ID CARD</b>
+function buildCardFromUser(user) {
+  const name = esc([user.first_name, user.last_name].filter(Boolean).join(' ') || '-')
+  const username = user.username ? `@${esc(user.username)}` : 'Tidak ada'
+  const userId = user.id
+  const premium = user.is_premium ? 'Ya' : 'Tidak'
+  const dcId = calcDcId(userId)
 
-<b>Nama:</b> ${nama}
+  const mention = `<a href="tg://user?id=${userId}">${name}</a>`
+
+  return (
+`<b>🪪 TELEGRAM ID CARD</b>
+<blockquote>
+<b>Nama:</b> ${name}
 <b>User ID:</b> <code>${userId}</code>
 <b>Username:</b> ${username}
 <b>DC ID:</b> <code>${dcId}</code>
 <b>Premium?:</b> ${premium}
+</blockquote>
 
 <b>👤 Mention:</b> ${mention}
+<b>🆔 ID Kamu:</b> <code>${userId}</code>
+<b>👤 Username:</b> ${username}
+<b>🏛 DC ID:</b> <code>${dcId}</code>
+<b>⭐ Akun Premium:</b> ${premium}
 
-Ketik /help untuk melihat fitur lainnya.`
+━━━━━━━━━━━━━━━━━━━━
+Ketik <code>/help</code> untuk melihat fitur lainnya.`
+  )
 }
 
+function keyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.url('💎 JOIN STORE KAMI', STORE_URL)],
+    [Markup.button.callback('🔄 Refresh', 'REFRESH')],
+  ])
+}
+
+// /start -> cek diri sendiri
 bot.start(async (ctx) => {
-  await ctx.reply(buildIdCard(ctx), {
+  await ctx.reply(buildCardFromUser(ctx.from), {
     parse_mode: 'HTML',
     disable_web_page_preview: true,
-    ...Markup.inlineKeyboard([
-      [Markup.button.url('💎 JOIN STORE KAMI', STORE_URL)],
-      [Markup.button.callback('🔄 Refresh', 'REFRESH')],
-    ])
+    ...keyboard(),
   })
 })
 
-bot.command('id', (ctx) => ctx.reply(buildIdCard(ctx), { parse_mode: 'HTML' }))
-bot.command('help', (ctx) => ctx.reply('/start\n/id\n/help'))
+// /id -> cek diri sendiri
+bot.command('id', async (ctx) => {
+  await ctx.reply(buildCardFromUser(ctx.from), {
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  })
+})
 
+bot.command('help', async (ctx) => {
+  await ctx.reply(
+`<b>📌 Perintah:</b>
+<code>/start</code> - tampilkan kartu kamu
+<code>/id</code> - tampilkan kartu kamu
+<code>/cek</code> - reply ke pesan orang, lalu ketik /cek untuk cek dia
+
+<b>Contoh:</b>
+Reply pesan teman → ketik <code>/cek</code>`,
+    { parse_mode: 'HTML' }
+  )
+})
+
+// /cek -> kalau reply pesan orang, cek orang itu. kalau tidak, cek diri sendiri
+bot.command('cek', async (ctx) => {
+  const replied = ctx.message?.reply_to_message
+  const targetUser = replied?.from || ctx.from
+
+  await ctx.reply(buildCardFromUser(targetUser), {
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  })
+})
+
+// Refresh tombol
 bot.action('REFRESH', async (ctx) => {
   await ctx.answerCbQuery('Di-refresh ✅')
-  await ctx.editMessageText(buildIdCard(ctx), {
+
+  // refresh kartu untuk user yang klik tombol (ctx.from)
+  await ctx.editMessageText(buildCardFromUser(ctx.from), {
     parse_mode: 'HTML',
     disable_web_page_preview: true,
-    ...Markup.inlineKeyboard([
-      [Markup.button.url('💎 JOIN STORE KAMI', STORE_URL)],
-      [Markup.button.callback('🔄 Refresh', 'REFRESH')],
-    ])
+    ...keyboard(),
   })
 })
 
-// IMPORTANT: Express harus bisa terima JSON body dari Telegram
+// ===== Render Webhook =====
 app.use(express.json())
+app.get('/', (_, res) => res.send('OK'))
 
-app.get('/', (req, res) => res.send('OK'))
-
-// Path webhook statis
 const WEBHOOK_PATH = '/telegram'
 
-// Pasang handler webhook Telegraf di path itu
 app.post(WEBHOOK_PATH, (req, res) => {
-  console.log('Webhook hit ✅') // buat bukti request masuk
   bot.handleUpdate(req.body, res)
 })
 
 app.listen(PORT, async () => {
-  console.log('Server running on', PORT)
-
   const webhookUrl = `${PUBLIC_URL}${WEBHOOK_PATH}`
-  console.log('Setting webhook to:', webhookUrl)
+  console.log('Server running on', PORT)
+  console.log('Webhook URL:', webhookUrl)
 
-  // set webhook (sekali)
+  // set webhook (kalau redeploy cepat bisa kena 429, tapi biasanya aman)
   await bot.telegram.setWebhook(webhookUrl)
   console.log('Webhook set ✅')
 })
