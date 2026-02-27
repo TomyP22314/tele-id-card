@@ -1,14 +1,13 @@
 {
   "name": "cekid-telegram-bot",
   "version": "1.0.0",
-  "description": "Telegram ID Card Bot - Render Webhook Version",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": "20.x"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
