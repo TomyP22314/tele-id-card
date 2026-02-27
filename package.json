@@ -17,3 +17,7 @@
   "author": "Your Name",
   "license": "MIT"
 }
+"dependencies": {
+  "@napi-rs/canvas": "^0.1.XX",  // cek versi terbaru
+  ...
+}
