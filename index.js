@@ -1,88 +1,70 @@
-require('dotenv').config();
-const express = require('express');
-const { Telegraf } = require('telegraf');
+import 'dotenv/config'
+import { Telegraf } from 'telegraf'
+import { createCanvas, loadImage } from 'canvas'
+import axios from 'axios'
+import fs from 'fs'
 
-const TOKEN = process.env.BOT_TOKEN;
+const bot = new Telegraf(process.env.BOT_TOKEN)
 
-if (!TOKEN) {
-  console.error('ERROR: BOT_TOKEN tidak ada!');
-  process.exit(1);
-}
-
-const bot = new Telegraf(TOKEN);
-
-// Log setiap update yang masuk ke Telegraf (wajib debug)
-bot.use((ctx, next) => {
-  console.log('UPDATE TELEGRAF DITERIMA!');
-  console.log('Update type:', ctx.updateType);
-  if (ctx.message) {
-    console.log('Pesan:', ctx.message.text);
-    console.log('Dari user:', ctx.from.id);
-  }
-  return next();
-});
-
-// Handler /start paling sederhana
-bot.start((ctx) => {
-  console.log('bot.start() TERPANGGIL!');
-  ctx.reply('Halo! Bot sudah terima /start. Ini respon tes.');
-  console.log('Reply dikirim');
-});
-
-// Handler semua pesan (backup)
-bot.on('message', (ctx) => {
-  console.log('Pesan apa saja diterima');
-  ctx.reply('Kamu kirim: ' + (ctx.message.text || 'tidak ada teks'));
-});
-
-// Express
-const app = express();
-
-// Parse JSON dari Telegram (WAJIB dan harus sebelum mount webhook)
-app.use(express.json());
-
-// Log request masuk (tetap ada untuk debug)
-app.use((req, res, next) => {
-  console.log(`REQUEST MASUK: ${req.method} ${req.url}`);
-  if (req.method === 'POST') {
-    console.log('Body POST:', JSON.stringify(req.body, null, 2));
-  }
-  next();
-});
-
-// Route tes
-app.get('/', (req, res) => {
-  res.send('Bot hidup!');
-});
-
-// Path webhook (sederhana dulu untuk test)
-const webhookPath = '/webhook';
-
-// PASANG WEBHOOK DI SINI (paling penting: gunakan bot.webhookCallback() langsung)
-app.post(webhookPath, bot.webhookCallback());
-
-// Handler sederhana (pastikan di luar app.use)
-bot.start((ctx) => {
-  console.log('bot.start() dipanggil!');
-  ctx.reply('Halo! Bot sudah terima /start.');
-});
-
-bot.on('message', (ctx) => {
-  console.log('Pesan diterima:', ctx.message.text);
-  ctx.reply('Kamu kirim: ' + ctx.message.text);
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Server jalan di port ${PORT}`);
-
-  const webhookUrl = `https://${process.env.RENDER_EXTERNAL_HOSTNAME}${webhookPath}`;
-
+bot.start(async (ctx) => {
   try {
-    await bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true });
-    console.log(`Webhook set ke: ${webhookUrl}`);
+    const user = ctx.from
+
+    const name = `${user.first_name || ''} ${user.last_name || ''}`
+    const username = user.username ? `@${user.username}` : 'Tidak ada'
+    const userId = user.id
+    const premium = user.is_premium ? "Ya" : "Tidak"
+
+    // Ambil foto profil
+    let photoUrl = null
+    const photos = await ctx.telegram.getUserProfilePhotos(userId, { limit: 1 })
+
+    if (photos.total_count > 0) {
+      const fileId = photos.photos[0][0].file_id
+      const file = await ctx.telegram.getFile(fileId)
+      photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`
+    }
+
+    // Buat canvas
+    const canvas = createCanvas(800, 400)
+    const ctxCanvas = canvas.getContext('2d')
+
+    // Background
+    ctxCanvas.fillStyle = '#2b2d42'
+    ctxCanvas.fillRect(0, 0, 800, 400)
+
+    // Judul
+    ctxCanvas.fillStyle = '#ffd166'
+    ctxCanvas.font = 'bold 40px Arial'
+    ctxCanvas.fillText('TELEGRAM ID CARD', 220, 70)
+
+    ctxCanvas.fillStyle = '#ffffff'
+    ctxCanvas.font = '28px Arial'
+
+    ctxCanvas.fillText(`Nama: ${name}`, 250, 140)
+    ctxCanvas.fillText(`User ID: ${userId}`, 250, 190)
+    ctxCanvas.fillText(`Username: ${username}`, 250, 240)
+    ctxCanvas.fillText(`Premium?: ${premium}`, 250, 290)
+
+    // DC ID (perkiraan kasar dari digit awal ID)
+    const dcId = String(userId)[0]
+    ctxCanvas.fillText(`DC ID: ${dcId}`, 250, 340)
+
+    // Foto profil
+    if (photoUrl) {
+      const image = await loadImage(photoUrl)
+      ctxCanvas.drawImage(image, 40, 120, 150, 150)
+    }
+
+    const buffer = canvas.toBuffer('image/png')
+
+    await ctx.replyWithPhoto({ source: buffer })
+
   } catch (err) {
-    console.error('Gagal set webhook:', err.message);
+    console.log(err)
+    ctx.reply("Terjadi kesalahan.")
   }
-});
+})
+
+bot.launch()
+console.log("Bot jalan...")
