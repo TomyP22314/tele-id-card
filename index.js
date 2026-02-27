@@ -1,4 +1,4 @@
-// index.js - Versi minimal pasti respon (tes webhook Telegraf + Render)
+// index.js - MINIMAL VERSION PASTI RESPON (no canvas, focus webhook + reply teks)
 
 require('dotenv').config();
 const express = require('express');
@@ -7,91 +7,92 @@ const { Telegraf } = require('telegraf');
 const TOKEN = process.env.BOT_TOKEN;
 
 if (!TOKEN) {
-  console.error('ERROR: BOT_TOKEN tidak ada di environment variables!');
+  console.error('CRITICAL: BOT_TOKEN TIDAK ADA DI ENV!');
   process.exit(1);
 }
 
-console.log('Token ditemukan, mulai inisialisasi bot...');
+console.log('Token OK. Mulai setup bot...');
 
 const bot = new Telegraf(TOKEN);
 
 const app = express();
 
-// WAJIB: Parse JSON body dari Telegram webhook
+// Parse JSON body dari Telegram (WAJIB!)
 app.use(express.json());
 
-// Log setiap request masuk (penting untuk debug)
+// Log SEMUA request masuk + body full (debug utama)
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log(`\n=== REQUEST MASUK [${new Date().toISOString()}] ===`);
+  console.log(`${req.method} ${req.url}`);
+  console.log('IP:', req.ip);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
   console.log('Body:', JSON.stringify(req.body, null, 2));
   next();
 });
 
-// Route tes (buka di browser untuk wake up service)
+// Route tes browser
 app.get('/', (req, res) => {
-  res.send('Bot sedang hidup! Coba kirim /start di Telegram.');
+  res.send('Bot LIVE! Kirim /start atau /ping di Telegram.');
 });
 
-// Handler /start - versi super sederhana
+// Handler /start - SUPER SEDERHANA + LOG EKSTRA
 bot.start(async (ctx) => {
-  console.log('Handler /start dipanggil oleh user:', ctx.from.id);
+  console.log('>>> HANDLER START DIPANGGIL <<<');
+  console.log('User:', JSON.stringify(ctx.from, null, 2));
 
   try {
-    const user = ctx.from;
-    const name = user.first_name || 'Pengguna';
-    const premium = user.is_premium ? 'Ya (Premium)' : 'Tidak';
+    const name = ctx.from.first_name || 'User';
+    const id = ctx.from.id;
+    const premium = ctx.from.is_premium ? 'Ya' : 'Tidak';
+
+    console.log('Mencoba kirim reply...');
 
     await ctx.reply(
-      `Halo ${name}! 👋\n` +
-      `Bot sudah menerima pesanmu.\n` +
-      `User ID kamu: ${user.id}\n` +
+      `Halo ${name}! Bot sudah terima /start kamu.\n` +
+      `User ID: ${id}\n` +
       `Premium: ${premium}\n\n` +
-      `Tes sukses! Bot respon normal.`
+      `Respon ini dari server Render. Kalau muncul, bot OK!`
     );
 
-    console.log('Reply /start berhasil dikirim');
+    console.log('>>> REPLY SUKSES DIKIRIM <<<');
   } catch (err) {
-    console.error('Gagal kirim reply /start:', err.message);
+    console.error('GAGAL KIRIM REPLY:', err.message || err);
   }
 });
 
-// Handler tes lain (kirim /ping)
+// Handler tes /ping
 bot.command('ping', async (ctx) => {
-  await ctx.reply('Pong! Bot hidup dan bisa kirim pesan.');
+  console.log('Handler /ping dipanggil');
+  try {
+    await ctx.reply('Pong! Bot bisa kirim pesan.');
+    console.log('Ping reply sukses');
+  } catch (err) {
+    console.error('Gagal ping reply:', err.message);
+  }
 });
 
-// Path webhook rahasia (pakai bagian token biar unik & aman)
+// Path webhook rahasia
 const tokenPart = TOKEN.split(':')[1] || 'secret';
-const webhookPath = `/webhook/${tokenPart}`;
+const webhookPath = `/hook/${tokenPart}`;  // contoh /hook/ABC-DEF...
 
-// Pasang Telegraf di path itu
+// Pasang webhook
 app.use(webhookPath, bot.webhookCallback(webhookPath));
 
-// Jalankan server
+// Server start
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Server berjalan di port ${PORT}`);
+  console.log(`Server jalan port ${PORT}`);
 
   const hostname = process.env.RENDER_EXTERNAL_HOSTNAME || `localhost:${PORT}`;
   const webhookUrl = `https://${hostname}${webhookPath}`;
 
   try {
-    // Drop antrian lama supaya bersih
     await bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true });
-    console.log(`Webhook berhasil diset ke: ${webhookUrl}`);
+    console.log(`Webhook SET: ${webhookUrl}`);
   } catch (err) {
     console.error('Gagal set webhook:', err.message || err);
   }
 });
 
-// Error handling dasar
-process.on('uncaughtException', err => {
-  console.error('CRASH (uncaught):', err);
-});
-
-process.on('unhandledRejection', reason => {
-  console.error('Unhandled rejection:', reason);
-});
-
-console.log('File index.js selesai di-load');
+console.log('Script selesai load');
