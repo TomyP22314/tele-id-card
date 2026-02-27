@@ -94,6 +94,44 @@ app.get('/', (req, res) => res.send('OK'))
 app.use(await bot.createWebhook({ domain: PUBLIC_URL }))
 app.listen(PORT, async () => {
   console.log('Server running on', PORT)
-  await bot.telegram.setWebhook(`${PUBLIC_URL}/${bot.secretPathComponent()}`)
-  console.log('Webhook set ✅')
+
+  const webhookUrl = `${PUBLIC_URL}/${bot.secretPathComponent()}`
+  console.log('Target webhook:', webhookUrl)
+
+  // 1) cek webhook yang sudah terpasang
+  try {
+    const info = await bot.telegram.getWebhookInfo()
+
+    if (info?.url === webhookUrl) {
+      console.log('Webhook already set ✅ (skip)')
+      return
+    }
+  } catch (e) {
+    console.log('getWebhookInfo failed (will try setWebhook anyway):', e?.message || e)
+  }
+
+  // 2) set webhook dengan retry kalau 429
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await bot.telegram.setWebhook(webhookUrl)
+      console.log('Webhook set ✅')
+      break
+    } catch (err) {
+      const retryAfter =
+        err?.response?.parameters?.retry_after ||
+        err?.parameters?.retry_after
+
+      const code = err?.response?.error_code || err?.code
+      console.log(`setWebhook failed (attempt ${attempt}) code=${code}`, err?.response || err)
+
+      if (code === 429 && retryAfter && attempt < 2) {
+        console.log(`Rate limited. Waiting ${retryAfter}s then retry...`)
+        await new Promise((r) => setTimeout(r, (retryAfter + 1) * 1000))
+        continue
+      }
+
+      // kalau bukan 429 atau sudah attempt terakhir
+      throw err
+    }
+  }
 })
