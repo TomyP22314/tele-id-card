@@ -14,13 +14,53 @@ if (!TOKEN) {
 
 const bot = new Telegraf(TOKEN);
 
+// ... (bagian atas: requires, TOKEN check, bot = new Telegraf(TOKEN) tetap)
+
 const app = express();
+
+// WAJIB: Parse JSON dari Telegram
+app.use(express.json());
+
+// Log SEMUA request (debug super penting!)
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} dari IP ${req.ip}`);
+    console.log('Headers:', req.headers);
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+    next();
+});
+
+// Route tes (buka browser untuk wake up)
+app.get('/', (req, res) => {
+    res.send('Bot ID Card LIVE! Coba /start di Telegram.');
+});
+
+// Path webhook RAHASIA (pakai bagian token biar unik)
+const tokenParts = TOKEN.split(':');
+const secretPath = `/bot-hook/${tokenParts[1] || 'default'}`;  // contoh: /bot-hook/ABC-DEF123...
+
+// Mount Telegraf di path itu
+app.use(secretPath, bot.webhookCallback(secretPath));
+
 const PORT = process.env.PORT || 3000;
 
-// Route tes supaya Render tahu service hidup
-app.get('/', (req, res) => {
-  res.send('Telegram ID Card Bot is running 🚀');
+app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`Server jalan di port ${PORT}`);
+
+    const hostname = process.env.RENDER_EXTERNAL_HOSTNAME || `localhost:${PORT}`;
+    const webhookUrl = `https://${hostname}${secretPath}`;
+
+    try {
+        // Drop antrian lama + set webhook baru
+        await bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true });
+        console.log(`Webhook SET SUKSES: ${webhookUrl}`);
+    } catch (err) {
+        console.error('Gagal set webhook:', err.message || err);
+    }
 });
+
+// Global error log
+process.on('uncaughtException', err => console.error('CRASH:', err));
+process.on('unhandledRejection', reason => console.error('Reject:', reason));
 
 // Handler /start
 bot.start(async (ctx) => {
