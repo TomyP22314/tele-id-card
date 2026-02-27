@@ -1,120 +1,190 @@
-const { Telegraf } = require('telegraf');
-const { createCanvas, loadImage, registerFont } = require('canvas');
-const express = require('express');
-const fs = require('fs').promises;
+// index.js
 require('dotenv').config();
+const { Telegraf } = require('telegraf');
+const { createCanvas, loadImage } = require('canvas');
+const express = require('express');
+const fetch = require('node-fetch'); // untuk download foto profile
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const TOKEN = process.env.BOT_TOKEN;
 
-// Optional: register font custom untuk futuristik (download font gratis seperti Orbitron.ttf, simpan di folder fonts/)
-// registerFont('./fonts/Orbitron-Bold.ttf', { family: 'Orbitron' });
+if (!TOKEN) {
+  console.error('ERROR: BOT_TOKEN tidak ditemukan di environment variables');
+  process.exit(1);
+}
 
-bot.start(async (ctx) => {
-    const user = ctx.from;
-    const username = user.username ? `@${user.username}` : 'Tidak ada';
-    const premium = user.is_premium ? 'Ya' : 'Tidak';
-    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User';
+const bot = new Telegraf(TOKEN);
 
-    // Ambil foto profile user (jika ada)
-    let profilePhotoUrl = null;
-    try {
-        const photos = await ctx.telegram.getUserProfilePhotos(user.id, { limit: 1 });
-        if (photos.total_count > 0) {
-            const file = await ctx.telegram.getFile(photos.photos[0][0].file_id);
-            profilePhotoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
-        }
-    } catch (err) {
-        console.error('Gagal ambil foto profile:', err);
-    }
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-    // Generate gambar ID Card
-    const width = 800;
-    const height = 1200;
-    const canvas = createCanvas(width, height);
-    const ctxCanvas = canvas.getContext('2d');
-
-    // Background futuristik: gradient dark blue-purple + grid/glow
-    const gradient = ctxCanvas.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, '#0f0c29');
-    gradient.addColorStop(0.5, '#302b63');
-    gradient.addColorStop(1, '#24243e');
-    ctxCanvas.fillStyle = gradient;
-    ctxCanvas.fillRect(0, 0, width, height);
-
-    // Tambah efek neon grid (opsional, bikin lebih cyber)
-    ctxCanvas.strokeStyle = 'rgba(0, 255, 255, 0.1)';
-    ctxCanvas.lineWidth = 1;
-    for (let i = 0; i < width; i += 50) {
-        ctxCanvas.beginPath();
-        ctxCanvas.moveTo(i, 0);
-        ctxCanvas.lineTo(i, height);
-        ctxCanvas.stroke();
-    }
-    for (let i = 0; i < height; i += 50) {
-        ctxCanvas.beginPath();
-        ctxCanvas.moveTo(0, i);
-        ctxCanvas.lineTo(width, i);
-        ctxCanvas.stroke();
-    }
-
-    // Overlay foto profile user (rounded, glow)
-    if (profilePhotoUrl) {
-        try {
-            const profileImg = await loadImage(profilePhotoUrl);
-            ctxCanvas.save();
-            ctxCanvas.beginPath();
-            ctxCanvas.arc(400, 250, 150, 0, Math.PI * 2); // circle
-            ctxCanvas.clip();
-            ctxCanvas.drawImage(profileImg, 250, 100, 300, 300);
-            ctxCanvas.restore();
-
-            // Glow effect
-            ctxCanvas.shadowColor = '#00ffff';
-            ctxCanvas.shadowBlur = 30;
-            ctxCanvas.strokeStyle = '#00ffff';
-            ctxCanvas.lineWidth = 5;
-            ctxCanvas.stroke();
-            ctxCanvas.shadowBlur = 0;
-        } catch (err) {
-            console.error('Gagal load foto:', err);
-        }
-    }
-
-    // Teks futuristik
-    ctxCanvas.font = 'bold 48px Arial'; // ganti ke font custom kalau ada
-    ctxCanvas.fillStyle = '#00ffff';
-    ctxCanvas.textAlign = 'center';
-    ctxCanvas.fillText('TELEGRAM ID CARD', width / 2, 500);
-
-    ctxCanvas.font = 'bold 32px Arial';
-    ctxCanvas.fillStyle = '#ffffff';
-    ctxCanvas.fillText(`Nama: ${fullName}`, width / 2, 580);
-    ctxCanvas.fillText(`User ID: ${user.id}`, width / 2, 630);
-    ctxCanvas.fillText(`Username: ${username}`, width / 2, 680);
-    ctxCanvas.fillText(`DC ID: 5 (contoh)`, width / 2, 730);
-    ctxCanvas.fillText(`Premium: ${premium}`, width / 2, 780);
-
-    // Tambah link di bawah (teks clickable kalau di caption)
-    ctxCanvas.font = '24px Arial';
-    ctxCanvas.fillStyle = '#00ff9d';
-    ctxCanvas.fillText('JOIN STORE KAMI 🔥', width / 2, 900);
-    ctxCanvas.fillText('https://t.me/+yourlink', width / 2, 950);
-
-    // Convert canvas ke buffer & kirim sebagai photo
-    const buffer = await canvas.toBuffer('image/png');
-    await ctx.replyWithPhoto({ source: buffer }, {
-        caption: `✨ ID Card futuristik kamu siap!\n\nHelp: /help\nJOIN STORE: https://t.me/+yourlink`,
-        parse_mode: 'HTML',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: 'Help', callback_data: 'help' }],
-                [{ text: 'JOIN STORE KAMI 🔥', url: 'https://t.me/chgoms_ofc' }]
-            ]
-        }
-    });
+// Route tes supaya Render tahu service hidup
+app.get('/', (req, res) => {
+  res.send('Telegram ID Card Bot is running 🚀');
 });
 
-// ... (bagian webhook & express seperti sebelumnya tetap)
+// Handler /start
+bot.start(async (ctx) => {
+  try {
+    const user = ctx.from;
+    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'User';
+    const username = user.username ? `@${user.username}` : 'Tidak ada';
+    const userId = user.id;
+    const isPremium = user.is_premium ? 'Ya' : 'Tidak';
 
-// Launch atau webhook
-// ...
+    // Ambil foto profile (jika ada)
+    let profilePhotoUrl = null;
+    try {
+      const photos = await ctx.telegram.getUserProfilePhotos(user.id, { limit: 1 });
+      if (photos.total_count > 0) {
+        const file = await ctx.telegram.getFile(photos.photos[0][photos.photos[0].length - 1].file_id);
+        profilePhotoUrl = `https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`;
+      }
+    } catch (err) {
+      console.log('Tidak bisa ambil foto profile:', err.message);
+    }
+
+    // Buat gambar ID Card
+    const width = 800;
+    const height = 1000;
+    const canvas = createCanvas(width, height);
+    const c = canvas.getContext('2d');
+
+    // Background futuristik (gradient gelap + neon)
+    const gradient = c.createLinearGradient(0, 0, 0, height);
+    gradient.addColorStop(0, '#0a001f');
+    gradient.addColorStop(0.4, '#1a0033');
+    gradient.addColorStop(1, '#000d1a');
+    c.fillStyle = gradient;
+    c.fillRect(0, 0, width, height);
+
+    // Garis neon horizontal
+    c.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(50, 150);
+    c.lineTo(width - 50, 150);
+    c.stroke();
+
+    // Foto profile (lingkaran dengan glow)
+    let profileImg = null;
+    if (profilePhotoUrl) {
+      try {
+        const response = await fetch(profilePhotoUrl);
+        const buffer = await response.buffer();
+        profileImg = await loadImage(buffer);
+      } catch (err) {
+        console.log('Gagal load foto:', err.message);
+      }
+    }
+
+    if (profileImg) {
+      c.save();
+      c.beginPath();
+      c.arc(400, 280, 140, 0, Math.PI * 2);
+      c.clip();
+      c.drawImage(profileImg, 260, 140, 280, 280);
+      c.restore();
+
+      // Glow neon
+      c.shadowColor = '#00ffff';
+      c.shadowBlur = 25;
+      c.strokeStyle = '#00ffff';
+      c.lineWidth = 6;
+      c.beginPath();
+      c.arc(400, 280, 140, 0, Math.PI * 2);
+      c.stroke();
+      c.shadowBlur = 0;
+    } else {
+      // Placeholder kalau tidak ada foto
+      c.fillStyle = '#00ffff';
+      c.font = 'bold 120px Arial';
+      c.textAlign = 'center';
+      c.fillText('?', 400, 320);
+    }
+
+    // Judul
+    c.font = 'bold 48px Arial';
+    c.fillStyle = '#00ffff';
+    c.textAlign = 'center';
+    c.fillText('TELEGRAM ID CARD', width / 2, 520);
+
+    // Info user
+    c.font = 'bold 28px Arial';
+    c.fillStyle = '#e0f7ff';
+    c.textAlign = 'left';
+    const leftMargin = 80;
+    let y = 580;
+
+    c.fillText(`Nama       : ${fullName}`, leftMargin, y); y += 50;
+    c.fillText(`User ID    : ${userId}`, leftMargin, y); y += 50;
+    c.fillText(`Username   : ${username}`, leftMargin, y); y += 50;
+    c.fillText(`Premium    : ${isPremium}`, leftMargin, y); y += 50;
+    c.fillText(`DC ID      : 5 (contoh)`, leftMargin, y);
+
+    // Link di bawah (teks)
+    c.font = '24px Arial';
+    c.fillStyle = '#00ff9d';
+    c.textAlign = 'center';
+    c.fillText('JOIN STORE KAMI 🔥', width / 2, height - 120);
+    c.fillText('https://t.me/+GANTI_DENGAN_LINK_KAMU', width / 2, height - 80);
+
+    // Convert ke buffer
+    const buffer = canvas.toBuffer('image/png');
+
+    // Kirim gambar + tombol
+    await ctx.replyWithPhoto(
+      { source: buffer },
+      {
+        caption: `✨ ID Card futuristik kamu sudah jadi!\n\nKlik tombol di bawah untuk join store kami!`,
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: 'JOIN STORE KAMI 🔥',
+                url: 'https://t.me/+GANTI_DENGAN_LINK_KAMU' // GANTI DI SINI
+              }
+            ],
+            [
+              { text: 'Help / Info', callback_data: 'help' }
+            ]
+          ]
+        }
+      }
+    );
+  } catch (error) {
+    console.error('Error di /start:', error);
+    await ctx.reply('Maaf, ada masalah saat membuat ID Card. Coba lagi nanti ya.');
+  }
+});
+
+// Handler button Help (contoh)
+bot.action('help', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply('Bot ini menampilkan ID Card Telegram kamu dalam gaya futuristik.\nKetik /start untuk mencoba!');
+});
+
+// Set webhook saat server start
+app.listen(PORT, '0.0.0.0', async () => {
+  console.log(`Server berjalan di port ${PORT}`);
+
+  const webhookUrl = `https://${process.env.RENDER_EXTERNAL_HOSTNAME || 'localhost:' + PORT}/webhook`;
+  try {
+    await bot.telegram.setWebhook(webhookUrl);
+    console.log(`Webhook berhasil di-set ke: ${webhookUrl}`);
+  } catch (err) {
+    console.error('Gagal set webhook:', err);
+  }
+});
+
+// Route webhook
+app.use('/webhook', bot.webhookCallback('/webhook'));
+
+// Error handling global
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
