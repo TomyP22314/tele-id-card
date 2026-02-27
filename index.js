@@ -37,34 +37,51 @@ bot.on('message', (ctx) => {
 
 // Express
 const app = express();
+
+// Parse JSON dari Telegram (WAJIB dan harus sebelum mount webhook)
 app.use(express.json());
 
-// Log request
+// Log request masuk (tetap ada untuk debug)
 app.use((req, res, next) => {
-  console.log(`REQUEST: ${req.method} ${req.url}`);
+  console.log(`REQUEST MASUK: ${req.method} ${req.url}`);
+  if (req.method === 'POST') {
+    console.log('Body POST:', JSON.stringify(req.body, null, 2));
+  }
   next();
 });
 
-// Path webhook
+// Route tes
+app.get('/', (req, res) => {
+  res.send('Bot hidup!');
+});
+
+// Path webhook (sederhana dulu untuk test)
 const webhookPath = '/webhook';
 
-// Pasang webhook
-app.use(webhookPath, bot.webhookCallback(webhookPath));
+// PASANG WEBHOOK DI SINI (paling penting: gunakan bot.webhookCallback() langsung)
+app.post(webhookPath, bot.webhookCallback());
 
-app.get('/', (req, res) => {
-  res.send('Bot OK!');
+// Handler sederhana (pastikan di luar app.use)
+bot.start((ctx) => {
+  console.log('bot.start() dipanggil!');
+  ctx.reply('Halo! Bot sudah terima /start.');
+});
+
+bot.on('message', (ctx) => {
+  console.log('Pesan diterima:', ctx.message.text);
+  ctx.reply('Kamu kirim: ' + ctx.message.text);
 });
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Server jalan port ${PORT}`);
+  console.log(`Server jalan di port ${PORT}`);
 
   const webhookUrl = `https://${process.env.RENDER_EXTERNAL_HOSTNAME}${webhookPath}`;
 
   try {
     await bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true });
-    console.log(`Webhook set: ${webhookUrl}`);
+    console.log(`Webhook set ke: ${webhookUrl}`);
   } catch (err) {
     console.error('Gagal set webhook:', err.message);
   }
