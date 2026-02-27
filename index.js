@@ -108,7 +108,7 @@ bot.start(async (ctx) => {
         reply_markup: {
             inline_keyboard: [
                 [{ text: 'Help', callback_data: 'help' }],
-                [{ text: 'JOIN STORE KAMI 🔥', url: 'https://t.me/+yourlink' }]
+                [{ text: 'JOIN STORE KAMI 🔥', url: 'https://t.me/chgoms_ofc' }]
             ]
         }
     });
