@@ -34,7 +34,7 @@ Premium?      : ${premium}
         reply_markup: {
             inline_keyboard: [
                 [{ text: 'Help', callback_data: 'help' }],
-                [{ text: 'JOIN STORE KAMI 🔥', url: 'https://t.me/+contohlink' }]
+                [{ text: 'JOIN STORE KAMI 🔥', url: 'https://t.me/chgoms_ofc' }]
             ]
         }
     };
