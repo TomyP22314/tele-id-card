@@ -1,2 +1,2 @@
 npm init -y
-npm i telegraf canvas axios dotenv
+npm i telegraf express dotenv
