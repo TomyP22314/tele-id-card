@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const { createCanvas, loadImage, registerFont } = require('@napi-rs/canvas'); // atau 'canvas'
+const { createCanvas, loadImage, registerFont } = require('canvas');
 const express = require('express');
 const fs = require('fs').promises;
 require('dotenv').config();
